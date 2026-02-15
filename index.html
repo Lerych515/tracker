@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Учёт времени</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap');
+
+  :root {
+    --bg: #F5F4F0;
+    --white: #FFFFFF;
+    --ink: #1A1A1A;
+    --muted: #8A8A8A;
+    --border: #E0DED8;
+    --green: #1E7B4B;
+    --green-light: #EBF6F0;
+    --red: #C0392B;
+    --red-light: #FDECEA;
+    --shadow: 0 2px 12px rgba(0,0,0,0.08);
+    --shadow-lg: 0 8px 32px rgba(0,0,0,0.12);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Manrope', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .app {
+    width: 100%;
+    max-width: 420px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+  }
+
+  header {
+    background: var(--white);
+    padding: 24px 24px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .app-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+
+  .live-time {
+    font-size: 32px;
+    font-weight: 800;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.5px;
+  }
+
+  .live-date {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 4px;
+    font-weight: 600;
+  }
+
+  .main {
+    padding: 24px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .emp-card {
+    background: var(--white);
+    border-radius: 20px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+
+  .emp-header {
+    padding: 20px 20px 16px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .emp-avatar {
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    background: #EBF0FF;
+    color: #3B5BDB;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    font-weight: 800;
+    flex-shrink: 0;
+  }
+
+  .emp-name {
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--ink);
+  }
+
+  .emp-status {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 3px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+  }
+
+  .status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--border);
+    flex-shrink: 0;
+  }
+  .status-dot.in { background: var(--green); }
+  .status-dot.out { background: var(--red); }
+
+  .session-bar {
+    margin: 0 20px 16px;
+    background: var(--green-light);
+    border-radius: 10px;
+    padding: 10px 14px;
+    display: none;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .session-bar.visible { display: flex; }
+  .session-bar span:first-child { font-size: 12px; color: var(--green); font-weight: 700; }
+  .session-bar span:last-child { font-size: 14px; color: var(--green); font-weight: 800; }
+
+  .emp-btns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    border-top: 1px solid var(--border);
+  }
+
+  .punch-btn {
+    padding: 18px 10px;
+    border: none;
+    background: transparent;
+    font-family: 'Manrope', sans-serif;
+    font-size: 15px;
+    font-weight: 800;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .punch-btn:active:not(:disabled) { transform: scale(0.96); }
+
+  .btn-in {
+    color: var(--green);
+    border-right: 1px solid var(--border);
+    border-radius: 0 0 0 20px;
+  }
+  .btn-in:hover:not(:disabled) { background: var(--green-light); }
+
+  .btn-out {
+    color: var(--red);
+    border-radius: 0 0 20px 0;
+  }
+  .btn-out:hover:not(:disabled) { background: var(--red-light); }
+
+  .punch-btn:disabled { opacity: 0.25; cursor: not-allowed; }
+
+  .punch-btn .spinner {
+    display: none;
+    width: 18px;
+    height: 18px;
+    border: 2.5px solid currentColor;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+  }
+  .punch-btn.loading .btn-icon,
+  .punch-btn.loading .btn-label { display: none; }
+  .punch-btn.loading .spinner { display: block; }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* LOG */
+  .log-card {
+    background: var(--white);
+    border-radius: 20px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+
+  .log-title {
+    padding: 16px 20px 12px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .log-list {
+    max-height: 260px;
+    overflow-y: auto;
+  }
+
+  .log-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 11px 20px;
+    border-bottom: 1px solid var(--border);
+    animation: fadeIn 0.3s ease;
+  }
+
+  .log-row:last-child { border-bottom: none; }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .log-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .log-dot.in { background: var(--green); }
+  .log-dot.out { background: var(--red); }
+
+  .log-type {
+    font-size: 13px;
+    font-weight: 700;
+    flex: 1;
+  }
+  .log-type.in { color: var(--green); }
+  .log-type.out { color: var(--red); }
+
+  .log-time {
+    font-size: 13px;
+    color: var(--muted);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .log-hours {
+    font-size: 13px;
+    font-weight: 800;
+    color: #2563EB;
+  }
+
+  .log-empty {
+    padding: 24px 20px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  /* TOAST */
+  .toast {
+    position: fixed;
+    bottom: 28px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--ink);
+    color: #fff;
+    font-family: 'Manrope', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    padding: 14px 24px;
+    border-radius: 100px;
+    box-shadow: var(--shadow-lg);
+    transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+    z-index: 999;
+    white-space: nowrap;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .toast.success { background: var(--green); }
+  .toast.error { background: var(--red); }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header>
+    <div class="app-title">Учёт рабочего времени</div>
+    <div class="live-time" id="liveTime">--:--:--</div>
+    <div class="live-date" id="liveDate">—</div>
+  </header>
+
+  <div class="main">
+
+    <!-- EMPLOYEE CARD -->
+    <div class="emp-card">
+      <div class="emp-header">
+        <div class="emp-avatar">AF</div>
+        <div>
+          <div class="emp-name">Angela Fastova</div>
+          <div class="emp-status">
+            <div class="status-dot" id="statusDot"></div>
+            <span id="statusText">Нет отметок сегодня</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="session-bar" id="sessionBar">
+        <span>⏱ На работе</span>
+        <span id="sessionVal">0 мин</span>
+      </div>
+
+      <div class="emp-btns">
+        <button class="punch-btn btn-in" id="btnIn" onclick="punch('in')">
+          <span class="btn-icon">→</span>
+          <span class="btn-label">Пришла</span>
+          <div class="spinner"></div>
+        </button>
+        <button class="punch-btn btn-out" id="btnOut" onclick="punch('out')" disabled>
+          <span class="btn-icon">←</span>
+          <span class="btn-label">Ушла</span>
+          <div class="spinner"></div>
+        </button>
+      </div>
+    </div>
+
+    <!-- TODAY'S LOG -->
+    <div class="log-card">
+      <div class="log-title">Журнал сегодня</div>
+      <div class="log-list" id="logList">
+        <div class="log-empty">Нажмите «Пришла» чтобы начать</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyVkJF-_Bhvr5pU1MdpCatrRXIwiMqQkIxDh1c5uYXA5OPRFXWuOG3ec6xh7EypXKWbog/exec';
+const STATE_KEY = 'wt_af_state';
+const LOG_KEY = 'wt_af_log';
+
+let state = { status: null, since: null };
+let todayLog = [];
+
+function loadData() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STATE_KEY));
+    const today = new Date().toLocaleDateString('ru');
+    if (saved && saved.date === today) {
+      state = { status: saved.status, since: saved.since };
+    }
+  } catch {}
+
+  try {
+    const saved = JSON.parse(localStorage.getItem(LOG_KEY));
+    const today = new Date().toLocaleDateString('ru');
+    if (saved && saved.date === today) {
+      todayLog = saved.entries || [];
+    }
+  } catch {}
+}
+
+function saveData() {
+  const today = new Date().toLocaleDateString('ru');
+  localStorage.setItem(STATE_KEY, JSON.stringify({ ...state, date: today }));
+  localStorage.setItem(LOG_KEY, JSON.stringify({ date: today, entries: todayLog }));
+}
+
+// CLOCK
+function updateClock() {
+  const now = new Date();
+  document.getElementById('liveTime').textContent =
+    now.toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  document.getElementById('liveDate').textContent =
+    now.toLocaleDateString('ru', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+}
+updateClock();
+setInterval(updateClock, 1000);
+setInterval(updateSessionTimer, 30000);
+
+// UI UPDATE
+function updateUI() {
+  const dot = document.getElementById('statusDot');
+  const text = document.getElementById('statusText');
+  const btnIn = document.getElementById('btnIn');
+  const btnOut = document.getElementById('btnOut');
+  const sessionBar = document.getElementById('sessionBar');
+
+  if (state.status === 'in') {
+    dot.className = 'status-dot in';
+    text.textContent = 'На работе с ' + formatTime(state.since);
+    btnIn.disabled = true;
+    btnOut.disabled = false;
+    sessionBar.classList.add('visible');
+    updateSessionTimer();
+  } else if (state.status === 'out') {
+    dot.className = 'status-dot out';
+    text.textContent = 'Ушла в ' + formatTime(state.since);
+    btnIn.disabled = false;
+    btnOut.disabled = true;
+    sessionBar.classList.remove('visible');
+  } else {
+    dot.className = 'status-dot';
+    text.textContent = 'Нет отметок сегодня';
+    btnIn.disabled = false;
+    btnOut.disabled = true;
+    sessionBar.classList.remove('visible');
+  }
+
+  renderLog();
+}
+
+function updateSessionTimer() {
+  if (state.status === 'in' && state.since) {
+    document.getElementById('sessionVal').textContent = calcElapsed(state.since);
+  }
+}
+
+// PUNCH
+async function punch(type) {
+  const btn = document.getElementById(type === 'in' ? 'btnIn' : 'btnOut');
+  btn.classList.add('loading');
+  document.getElementById('btnIn').disabled = true;
+  document.getElementById('btnOut').disabled = true;
+
+  const now = new Date();
+
+  // Find paired entry for hours calculation
+  let hoursStr = null;
+  if (type === 'out' && state.since) {
+    const diff = (now - new Date(state.since)) / 3600000;
+    hoursStr = diff.toFixed(1) + ' ч';
+  }
+
+  state = { status: type, since: now.toISOString() };
+
+  todayLog.push({
+    type,
+    ts: now.toISOString(),
+    time: now.toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' }),
+    hours: hoursStr
+  });
+
+  saveData();
+  updateUI();
+
+  // Send to Google Sheets
+  try {
+    const params = new URLSearchParams({
+      employee: 'Angela Fastova',
+      type: type,
+      timestamp: now.toISOString(),
+      date: now.toLocaleDateString('ru'),
+      time: now.toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' })
+    });
+
+    await fetch(SCRIPT_URL + '?' + params.toString(), {
+      method: 'GET',
+      mode: 'no-cors'
+    });
+
+    showToast(type === 'in' ? '✓ Приход записан в таблицу' : '✓ Уход записан в таблицу', 'success');
+  } catch {
+    showToast('⚠️ Нет связи — сохранено локально', '');
+  }
+
+  btn.classList.remove('loading');
+  updateUI();
+}
+
+// LOG
+function renderLog() {
+  const list = document.getElementById('logList');
+
+  if (todayLog.length === 0) {
+    list.innerHTML = '<div class="log-empty">Нажмите «Пришла» чтобы начать</div>';
+    return;
+  }
+
+  list.innerHTML = '';
+  [...todayLog].reverse().forEach(entry => {
+    const row = document.createElement('div');
+    row.className = 'log-row';
+    row.innerHTML = `
+      <div class="log-dot ${entry.type}"></div>
+      <div class="log-type ${entry.type}">${entry.type === 'in' ? '→ Пришла' : '← Ушла'}</div>
+      ${entry.hours ? `<span class="log-hours">${entry.hours}</span>` : ''}
+      <span class="log-time">${entry.time}</span>
+    `;
+    list.appendChild(row);
+  });
+}
+
+// UTILS
+function formatTime(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' });
+}
+
+function calcElapsed(since) {
+  const mins = Math.floor((Date.now() - new Date(since)) / 60000);
+  if (mins < 60) return mins + ' мин';
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return h + ' ч' + (m > 0 ? ' ' + m + ' м' : '');
+}
+
+let toastTimer;
+function showToast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast ' + (type || '');
+  clearTimeout(toastTimer);
+  requestAnimationFrame(() => t.classList.add('show'));
+  toastTimer = setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// INIT
+loadData();
+updateUI();
+</script>
+</body>
+</html>
