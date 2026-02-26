@@ -17,6 +17,8 @@
     --green-light: #EBF6F0;
     --red: #C0392B;
     --red-light: #FDECEA;
+    --blue: #2563EB;
+    --blue-light: #EEF4FF;
     --shadow: 0 2px 12px rgba(0,0,0,0.08);
     --shadow-lg: 0 8px 32px rgba(0,0,0,0.12);
   }
@@ -200,7 +202,6 @@
 
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* LOG */
   .log-card {
     background: var(--white);
     border-radius: 20px;
@@ -266,7 +267,7 @@
   .log-hours {
     font-size: 13px;
     font-weight: 800;
-    color: #2563EB;
+    color: var(--blue);
   }
 
   .log-empty {
@@ -277,13 +278,11 @@
     font-weight: 600;
   }
 
-  /* TOAST */
   .toast {
     position: fixed;
     bottom: 28px;
     left: 50%;
     transform: translateX(-50%) translateY(80px);
-    background: var(--ink);
     color: #fff;
     font-family: 'Manrope', sans-serif;
     font-size: 14px;
@@ -293,11 +292,13 @@
     box-shadow: var(--shadow-lg);
     transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
     z-index: 999;
-    white-space: nowrap;
+    text-align: center;
+    max-width: calc(100vw - 32px);
   }
   .toast.show { transform: translateX(-50%) translateY(0); }
   .toast.success { background: var(--green); }
   .toast.error { background: var(--red); }
+  .toast.info { background: var(--blue); }
 </style>
 </head>
 <body>
@@ -311,7 +312,6 @@
 
   <div class="main">
 
-    <!-- EMPLOYEE CARD -->
     <div class="emp-card">
       <div class="emp-header">
         <div class="emp-avatar">AF</div>
@@ -343,7 +343,6 @@
       </div>
     </div>
 
-    <!-- TODAY'S LOG -->
     <div class="log-card">
       <div class="log-title">Журнал сегодня</div>
       <div class="log-list" id="logList">
@@ -358,49 +357,74 @@
 
 <script>
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyVkJF-_Bhvr5pU1MdpCatrRXIwiMqQkIxDh1c5uYXA5OPRFXWuOG3ec6xh7EypXKWbog/exec';
+const EMPLOYEE_NAME = 'Angela Fastova';
+
 const STATE_KEY = 'wt_af_state';
 const LOG_KEY = 'wt_af_log';
 
 let state = { status: null, since: null };
 let todayLog = [];
+let isSubmitting = false;
+let toastTimer = null;
+
+function getTodayKey() {
+  const now = new Date();
+  const d = String(now.getDate()).padStart(2, '0');
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const y = String(now.getFullYear());
+  return `${d}.${m}.${y}`;
+}
 
 function loadData() {
   try {
-    const saved = JSON.parse(localStorage.getItem(STATE_KEY));
-    const today = new Date().toLocaleDateString('ru');
-    if (saved && saved.date === today) {
-      state = { status: saved.status, since: saved.since };
+    const savedState = JSON.parse(localStorage.getItem(STATE_KEY));
+    if (savedState && savedState.date === getTodayKey()) {
+      state = {
+        status: savedState.status || null,
+        since: savedState.since || null
+      };
     }
-  } catch {}
+  } catch (e) {}
 
   try {
-    const saved = JSON.parse(localStorage.getItem(LOG_KEY));
-    const today = new Date().toLocaleDateString('ru');
-    if (saved && saved.date === today) {
-      todayLog = saved.entries || [];
+    const savedLog = JSON.parse(localStorage.getItem(LOG_KEY));
+    if (savedLog && savedLog.date === getTodayKey()) {
+      todayLog = Array.isArray(savedLog.entries) ? savedLog.entries : [];
     }
-  } catch {}
+  } catch (e) {}
 }
 
 function saveData() {
-  const today = new Date().toLocaleDateString('ru');
-  localStorage.setItem(STATE_KEY, JSON.stringify({ ...state, date: today }));
-  localStorage.setItem(LOG_KEY, JSON.stringify({ date: today, entries: todayLog }));
+  const today = getTodayKey();
+  localStorage.setItem(STATE_KEY, JSON.stringify({
+    status: state.status,
+    since: state.since,
+    date: today
+  }));
+  localStorage.setItem(LOG_KEY, JSON.stringify({
+    date: today,
+    entries: todayLog
+  }));
 }
 
-// CLOCK
 function updateClock() {
   const now = new Date();
   document.getElementById('liveTime').textContent =
-    now.toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  document.getElementById('liveDate').textContent =
-    now.toLocaleDateString('ru', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-}
-updateClock();
-setInterval(updateClock, 1000);
-setInterval(updateSessionTimer, 30000);
+    now.toLocaleTimeString('ru-RU', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
 
-// UI UPDATE
+  document.getElementById('liveDate').textContent =
+    now.toLocaleDateString('ru-RU', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    });
+}
+
 function updateUI() {
   const dot = document.getElementById('statusDot');
   const text = document.getElementById('statusText');
@@ -412,21 +436,26 @@ function updateUI() {
     dot.className = 'status-dot in';
     text.textContent = 'На работе с ' + formatTime(state.since);
     btnIn.disabled = true;
-    btnOut.disabled = false;
+    btnOut.disabled = isSubmitting;
     sessionBar.classList.add('visible');
     updateSessionTimer();
   } else if (state.status === 'out') {
     dot.className = 'status-dot out';
     text.textContent = 'Ушла в ' + formatTime(state.since);
-    btnIn.disabled = false;
+    btnIn.disabled = isSubmitting;
     btnOut.disabled = true;
     sessionBar.classList.remove('visible');
   } else {
     dot.className = 'status-dot';
     text.textContent = 'Нет отметок сегодня';
-    btnIn.disabled = false;
+    btnIn.disabled = isSubmitting;
     btnOut.disabled = true;
     sessionBar.classList.remove('visible');
+  }
+
+  if (isSubmitting) {
+    btnIn.disabled = true;
+    btnOut.disabled = true;
   }
 
   renderLog();
@@ -438,108 +467,177 @@ function updateSessionTimer() {
   }
 }
 
-// PUNCH
-async function punch(type) {
+function setButtonLoading(type, loading) {
   const btn = document.getElementById(type === 'in' ? 'btnIn' : 'btnOut');
-  btn.classList.add('loading');
-  document.getElementById('btnIn').disabled = true;
-  document.getElementById('btnOut').disabled = true;
+  if (!btn) return;
 
-  const now = new Date();
+  if (loading) {
+    btn.classList.add('loading');
+  } else {
+    btn.classList.remove('loading');
+  }
+}
 
-  // Find paired entry for hours calculation
-  let hoursStr = null;
-  if (type === 'out' && state.since) {
-    const diff = (now - new Date(state.since)) / 3600000;
-    hoursStr = diff.toFixed(1) + ' ч';
+async function punch(type) {
+  if (isSubmitting) return;
+
+  if (type === 'in' && state.status === 'in') {
+    showToast('Вы уже отмечены как «На работе»', 'info');
+    return;
   }
 
-  state = { status: type, since: now.toISOString() };
+  if (type === 'out' && state.status !== 'in') {
+    showToast('Сначала нужно нажать «Пришла»', 'error');
+    return;
+  }
+
+  isSubmitting = true;
+  setButtonLoading(type, true);
+  updateUI();
+
+  const now = new Date();
+  const timestampIso = now.toISOString();
+
+  const params = new URLSearchParams({
+    employee: EMPLOYEE_NAME,
+    type: type,
+    timestamp: timestampIso,
+    date: now.toLocaleDateString('ru-RU'),
+    time: now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+  });
+
+  try {
+    const response = await fetch(SCRIPT_URL + '?' + params.toString(), {
+      method: 'GET',
+      redirect: 'follow',
+      cache: 'no-store'
+    });
+
+    if (!response.ok) {
+      throw new Error('HTTP ' + response.status);
+    }
+
+    let result;
+    try {
+      result = await response.json();
+    } catch (e) {
+      throw new Error('Сервер вернул не JSON');
+    }
+
+    if (result.status === 'ok') {
+      applySuccessfulPunch(type, now);
+      showToast(
+        type === 'in' ? '✓ Приход записан' : '✓ Уход записан',
+        'success'
+      );
+    } else if (result.status === 'duplicate_skipped') {
+      showToast(result.message || 'Повторное нажатие проигнорировано', 'info');
+    } else if (result.status === 'blocked') {
+      showToast(result.message || 'Действие запрещено', 'error');
+    } else {
+      showToast(result.message || 'Не удалось сохранить отметку', 'error');
+    }
+
+  } catch (error) {
+    showToast('⚠️ Нет связи или ошибка сервера', 'error');
+  } finally {
+    isSubmitting = false;
+    setButtonLoading(type, false);
+    updateUI();
+  }
+}
+
+function applySuccessfulPunch(type, now) {
+  let hoursStr = null;
+
+  if (type === 'out' && state.since) {
+    const diffHours = (now.getTime() - new Date(state.since).getTime()) / 3600000;
+    if (diffHours > 0) {
+      hoursStr = diffHours.toFixed(1) + ' ч';
+    }
+  }
+
+  state = {
+    status: type,
+    since: now.toISOString()
+  };
 
   todayLog.push({
-    type,
+    type: type,
     ts: now.toISOString(),
-    time: now.toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' }),
+    time: now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
     hours: hoursStr
   });
 
   saveData();
-  updateUI();
-
-  // Send to Google Sheets
-  try {
-    const params = new URLSearchParams({
-      employee: 'Angela Fastova',
-      type: type,
-      timestamp: now.toISOString(),
-      date: now.toLocaleDateString('ru'),
-      time: now.toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' })
-    });
-
-    await fetch(SCRIPT_URL + '?' + params.toString(), {
-      method: 'GET',
-      mode: 'no-cors'
-    });
-
-    showToast(type === 'in' ? '✓ Приход записан в таблицу' : '✓ Уход записан в таблицу', 'success');
-  } catch {
-    showToast('⚠️ Нет связи — сохранено локально', '');
-  }
-
-  btn.classList.remove('loading');
-  updateUI();
 }
 
-// LOG
 function renderLog() {
   const list = document.getElementById('logList');
 
-  if (todayLog.length === 0) {
+  if (!todayLog.length) {
     list.innerHTML = '<div class="log-empty">Нажмите «Пришла» чтобы начать</div>';
     return;
   }
 
   list.innerHTML = '';
+
   [...todayLog].reverse().forEach(entry => {
     const row = document.createElement('div');
     row.className = 'log-row';
+
     row.innerHTML = `
       <div class="log-dot ${entry.type}"></div>
       <div class="log-type ${entry.type}">${entry.type === 'in' ? '→ Пришла' : '← Ушла'}</div>
       ${entry.hours ? `<span class="log-hours">${entry.hours}</span>` : ''}
       <span class="log-time">${entry.time}</span>
     `;
+
     list.appendChild(row);
   });
 }
 
-// UTILS
 function formatTime(iso) {
   if (!iso) return '—';
-  return new Date(iso).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' });
+  return new Date(iso).toLocaleTimeString('ru-RU', {
+    hour: '2-digit',
+    minute: '2-digit'
+  });
 }
 
 function calcElapsed(since) {
-  const mins = Math.floor((Date.now() - new Date(since)) / 60000);
+  const mins = Math.floor((Date.now() - new Date(since).getTime()) / 60000);
+
   if (mins < 60) return mins + ' мин';
+
   const h = Math.floor(mins / 60);
   const m = mins % 60;
   return h + ' ч' + (m > 0 ? ' ' + m + ' м' : '');
 }
 
-let toastTimer;
 function showToast(msg, type) {
   const t = document.getElementById('toast');
   t.textContent = msg;
-  t.className = 'toast ' + (type || '');
+  t.className = 'toast ' + (type || 'info');
+
   clearTimeout(toastTimer);
-  requestAnimationFrame(() => t.classList.add('show'));
-  toastTimer = setTimeout(() => t.classList.remove('show'), 3000);
+
+  requestAnimationFrame(() => {
+    t.classList.add('show');
+  });
+
+  toastTimer = setTimeout(() => {
+    t.classList.remove('show');
+  }, 3200);
 }
 
-// INIT
 loadData();
+updateClock();
 updateUI();
+updateSessionTimer();
+
+setInterval(updateClock, 1000);
+setInterval(updateSessionTimer, 30000);
 </script>
 </body>
 </html>
