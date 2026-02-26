@@ -471,36 +471,50 @@ function setButtonLoading(type, loading) {
   btn.classList.toggle('loading', loading);
 }
 
-function recoverStateFromServerReply(type, now) {
-  if (type === 'in') {
+async function syncFromServer(showErrorToast = false) {
+  try {
+    const params = new URLSearchParams({
+      mode: 'status',
+      employee: EMPLOYEE_NAME
+    });
+
+    const response = await fetch(SCRIPT_URL + '?' + params.toString(), {
+      method: 'GET',
+      redirect: 'follow',
+      cache: 'no-store'
+    });
+
+    if (!response.ok) {
+      throw new Error('HTTP ' + response.status);
+    }
+
+    const result = await response.json();
+
+    if (!result || !('status' in result)) {
+      throw new Error('Bad status response');
+    }
+
     state = {
-      status: 'in',
-      since: now.toISOString()
+      status: result.status || null,
+      since: result.since || null
     };
 
-    const hasInLog = todayLog.some(entry => entry.type === 'in');
-    if (!hasInLog) {
+    if (todayLog.length === 0 && result.status && result.since) {
       todayLog.push({
-        type: 'in',
-        ts: now.toISOString(),
-        time: now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+        type: result.status,
+        ts: result.since,
+        time: result.time || formatTime(result.since),
         hours: null
       });
     }
 
     saveData();
     updateUI();
-    showToast('Приход уже был записан. Статус восстановлен.', 'info');
-  }
 
-  if (type === 'out') {
-    state = {
-      status: 'out',
-      since: now.toISOString()
-    };
-    saveData();
-    updateUI();
-    showToast('Уход уже был записан.', 'info');
+  } catch (error) {
+    if (showErrorToast) {
+      showToast('Не удалось получить текущий статус', 'error');
+    }
   }
 }
 
@@ -554,17 +568,14 @@ async function punch(type) {
       applySuccessfulPunch(type, now);
       showToast(type === 'in' ? '✓ Приход записан' : '✓ Уход записан', 'success');
     } else if (result.status === 'duplicate_skipped') {
-      recoverStateFromServerReply(type, now);
+      showToast(result.message || 'Повторное нажатие проигнорировано', 'info');
+      await syncFromServer(false);
     } else if (result.status === 'blocked') {
-      // Если сервер говорит, что повторный Приход запрещён,
-      // значит Приход уже есть в таблице — восстанавливаем состояние.
-      if (type === 'in') {
-        recoverStateFromServerReply('in', now);
-      } else {
-        showToast(result.message || 'Действие запрещено', 'error');
-      }
+      showToast(result.message || 'Действие запрещено', 'error');
+      await syncFromServer(false);
     } else {
       showToast(result.message || 'Не удалось сохранить отметку', 'error');
+      await syncFromServer(false);
     }
 
   } catch (error) {
@@ -658,13 +669,18 @@ function showToast(msg, type) {
   }, 3200);
 }
 
-loadData();
-updateClock();
-updateUI();
-updateSessionTimer();
+async function boot() {
+  loadData();
+  updateClock();
+  updateUI();
+  await syncFromServer(false);
+  updateSessionTimer();
 
-setInterval(updateClock, 1000);
-setInterval(updateSessionTimer, 30000);
+  setInterval(updateClock, 1000);
+  setInterval(updateSessionTimer, 30000);
+}
+
+boot();
 </script>
 </body>
 </html>
