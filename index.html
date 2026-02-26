@@ -18,7 +18,6 @@
     --red: #C0392B;
     --red-light: #FDECEA;
     --blue: #2563EB;
-    --blue-light: #EEF4FF;
     --shadow: 0 2px 12px rgba(0,0,0,0.08);
     --shadow-lg: 0 8px 32px rgba(0,0,0,0.12);
   }
@@ -230,15 +229,9 @@
     gap: 12px;
     padding: 11px 20px;
     border-bottom: 1px solid var(--border);
-    animation: fadeIn 0.3s ease;
   }
 
   .log-row:last-child { border-bottom: none; }
-
-  @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(-4px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
 
   .log-dot {
     width: 8px;
@@ -303,7 +296,6 @@
 </head>
 <body>
 <div class="app">
-
   <header>
     <div class="app-title">Учёт рабочего времени</div>
     <div class="live-time" id="liveTime">--:--:--</div>
@@ -311,7 +303,6 @@
   </header>
 
   <div class="main">
-
     <div class="emp-card">
       <div class="emp-header">
         <div class="emp-avatar">AF</div>
@@ -349,7 +340,6 @@
         <div class="log-empty">Нажмите «Пришла» чтобы начать</div>
       </div>
     </div>
-
   </div>
 </div>
 
@@ -383,15 +373,23 @@ function loadData() {
         status: savedState.status || null,
         since: savedState.since || null
       };
+    } else {
+      state = { status: null, since: null };
     }
-  } catch (e) {}
+  } catch (e) {
+    state = { status: null, since: null };
+  }
 
   try {
     const savedLog = JSON.parse(localStorage.getItem(LOG_KEY));
     if (savedLog && savedLog.date === getTodayKey()) {
       todayLog = Array.isArray(savedLog.entries) ? savedLog.entries : [];
+    } else {
+      todayLog = [];
     }
-  } catch (e) {}
+  } catch (e) {
+    todayLog = [];
+  }
 }
 
 function saveData() {
@@ -470,11 +468,39 @@ function updateSessionTimer() {
 function setButtonLoading(type, loading) {
   const btn = document.getElementById(type === 'in' ? 'btnIn' : 'btnOut');
   if (!btn) return;
+  btn.classList.toggle('loading', loading);
+}
 
-  if (loading) {
-    btn.classList.add('loading');
-  } else {
-    btn.classList.remove('loading');
+function recoverStateFromServerReply(type, now) {
+  if (type === 'in') {
+    state = {
+      status: 'in',
+      since: now.toISOString()
+    };
+
+    const hasInLog = todayLog.some(entry => entry.type === 'in');
+    if (!hasInLog) {
+      todayLog.push({
+        type: 'in',
+        ts: now.toISOString(),
+        time: now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+        hours: null
+      });
+    }
+
+    saveData();
+    updateUI();
+    showToast('Приход уже был записан. Статус восстановлен.', 'info');
+  }
+
+  if (type === 'out') {
+    state = {
+      status: 'out',
+      since: now.toISOString()
+    };
+    saveData();
+    updateUI();
+    showToast('Уход уже был записан.', 'info');
   }
 }
 
@@ -526,14 +552,17 @@ async function punch(type) {
 
     if (result.status === 'ok') {
       applySuccessfulPunch(type, now);
-      showToast(
-        type === 'in' ? '✓ Приход записан' : '✓ Уход записан',
-        'success'
-      );
+      showToast(type === 'in' ? '✓ Приход записан' : '✓ Уход записан', 'success');
     } else if (result.status === 'duplicate_skipped') {
-      showToast(result.message || 'Повторное нажатие проигнорировано', 'info');
+      recoverStateFromServerReply(type, now);
     } else if (result.status === 'blocked') {
-      showToast(result.message || 'Действие запрещено', 'error');
+      // Если сервер говорит, что повторный Приход запрещён,
+      // значит Приход уже есть в таблице — восстанавливаем состояние.
+      if (type === 'in') {
+        recoverStateFromServerReply('in', now);
+      } else {
+        showToast(result.message || 'Действие запрещено', 'error');
+      }
     } else {
       showToast(result.message || 'Не удалось сохранить отметку', 'error');
     }
@@ -607,9 +636,7 @@ function formatTime(iso) {
 
 function calcElapsed(since) {
   const mins = Math.floor((Date.now() - new Date(since).getTime()) / 60000);
-
   if (mins < 60) return mins + ' мин';
-
   const h = Math.floor(mins / 60);
   const m = mins % 60;
   return h + ' ч' + (m > 0 ? ' ' + m + ' м' : '');
