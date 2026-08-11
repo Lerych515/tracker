@@ -1,0 +1,67 @@
+name: Fast cached login
+
+on:
+  push:
+    paths:
+      - '.github/workflows/fast-login.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Make cached login instant
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('index.html')
+          s = p.read_text(encoding='utf-8')
+          old = """  document.getElementById('authCopy').textContent = 'Проверяем доступ…';
+
+  await Promise.all([
+    syncFromServer(false),
+    syncSummary(false)
+  ]);
+
+  if (isAuthReady) {
+    hideAuth();
+    updateSessionTimer();
+  }
+"""
+          new = """  // Сохранённый токен уже проверен по сроку действия в loadAuth().
+  // Не держим сотрудника на экране «Проверяем доступ…»: открываем приложение сразу,
+  // а серверную проверку статуса и расчёта выполняем в фоне. Любая операция записи
+  // всё равно повторно проверяется сервером по токену.
+  isAuthReady = true;
+  hideAuth();
+  updateUI();
+  updateSessionTimer();
+
+  Promise.all([
+    syncFromServer(false),
+    syncSummary(false)
+  ]).catch(() => {});
+"""
+          if s.count(old) != 1:
+              raise SystemExit(f'Expected one boot block, found {s.count(old)}')
+          s = s.replace(old, new, 1)
+          p.write_text(s, encoding='utf-8')
+          PY
+      - name: Verify
+        shell: bash
+        run: |
+          grep -F "isAuthReady = true;" index.html
+          grep -F "Promise.all([" index.html
+          git diff --check
+      - name: Commit
+        shell: bash
+        run: |
+          git config user.name 'Pelican tracker bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add index.html
+          git commit -m 'Open tracker immediately with valid cached session'
+          git push
