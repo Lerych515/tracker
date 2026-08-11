@@ -1,0 +1,20 @@
+name: Apply journal reconcile
+on:
+  push:
+    paths:
+      - 'tools/reconcile-journal.py'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python tools/reconcile-journal.py
+      - run: git diff --check
+      - run: |
+          git config user.name 'Pelican tracker bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add index.html
+          git commit -m 'Reconcile local journal with server status'
+          git push
