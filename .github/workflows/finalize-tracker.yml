@@ -1,0 +1,66 @@
+name: Finalize tracker
+
+on:
+  push:
+    paths:
+      - '.github/workflows/finalize-tracker.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply targeted tracker fixes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('index.html')
+          text = path.read_text(encoding='utf-8')
+
+          replacements = [
+              (
+                  "const STATE_KEY = 'wt_af_state';\nconst LOG_KEY = 'wt_af_log';",
+                  "const STATE_KEY = 'wt_af_state_v2';\nconst LOG_KEY = 'wt_af_log_v2';"
+              ),
+              (
+                  "  const rate = Number(summary.rate || 0);\n  const todayEarned = todayHours * rate;\n  const billableWeekHours = Math.round(weekHours * 10) / 10;",
+                  "  const rate = Number(summary.rate || 0);\n  const billableTodayHours = Math.round(todayHours * 10) / 10;\n  const todayEarned = billableTodayHours * rate;\n  const billableWeekHours = Math.round(weekHours * 10) / 10;"
+              ),
+              (
+                  "      showToast(type === 'in' ? '✓ Приход записан' : '✓ Уход записан', 'success');\n      await syncSummary(false);",
+                  "      showToast(type === 'in' ? '✓ Приход записан' : '✓ Уход записан', 'success');\n      syncSummary(false);"
+              ),
+          ]
+
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'Expected exactly one match, found {count}: {old[:70]!r}')
+              text = text.replace(old, new, 1)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Verify only intended behavior markers
+        shell: bash
+        run: |
+          grep -F "const STATE_KEY = 'wt_af_state_v2';" index.html
+          grep -F "const LOG_KEY = 'wt_af_log_v2';" index.html
+          grep -F "const billableTodayHours = Math.round(todayHours * 10) / 10;" index.html
+          grep -F "      syncSummary(false);" index.html
+          git diff --check
+
+      - name: Commit fixes
+        shell: bash
+        run: |
+          git config user.name 'Pelican tracker bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add index.html
+          git commit -m 'Finalize tracker responsiveness and earnings calculation'
+          git push
