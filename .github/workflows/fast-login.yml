@@ -20,32 +20,8 @@ jobs:
           from pathlib import Path
           p = Path('index.html')
           s = p.read_text(encoding='utf-8')
-          old = """  document.getElementById('authCopy').textContent = 'Проверяем доступ…';
-
-  await Promise.all([
-    syncFromServer(false),
-    syncSummary(false)
-  ]);
-
-  if (isAuthReady) {
-    hideAuth();
-    updateSessionTimer();
-  }
-"""
-          new = """  // Сохранённый токен уже проверен по сроку действия в loadAuth().
-  // Не держим сотрудника на экране «Проверяем доступ…»: открываем приложение сразу,
-  // а серверную проверку статуса и расчёта выполняем в фоне. Любая операция записи
-  // всё равно повторно проверяется сервером по токену.
-  isAuthReady = true;
-  hideAuth();
-  updateUI();
-  updateSessionTimer();
-
-  Promise.all([
-    syncFromServer(false),
-    syncSummary(false)
-  ]).catch(() => {});
-"""
+          old = "  document.getElementById('authCopy').textContent = 'Проверяем доступ…';\n\n  await Promise.all([\n    syncFromServer(false),\n    syncSummary(false)\n  ]);\n\n  if (isAuthReady) {\n    hideAuth();\n    updateSessionTimer();\n  }\n"
+          new = "  isAuthReady = true;\n  hideAuth();\n  updateUI();\n  updateSessionTimer();\n\n  Promise.all([\n    syncFromServer(false),\n    syncSummary(false)\n  ]).catch(() => {});\n"
           if s.count(old) != 1:
               raise SystemExit(f'Expected one boot block, found {s.count(old)}')
           s = s.replace(old, new, 1)
@@ -54,8 +30,8 @@ jobs:
       - name: Verify
         shell: bash
         run: |
-          grep -F "isAuthReady = true;" index.html
           grep -F "Promise.all([" index.html
+          grep -F "]).catch(() => {});" index.html
           git diff --check
       - name: Commit
         shell: bash
