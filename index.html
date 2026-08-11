@@ -643,8 +643,8 @@
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby_wVeTdnrjy4ssYZiyLUKZrAvDjnC9qjbusD8XoVJ5jfGjAEk95YXoNwrZ0tII6s9Z4w/exec';
 const EMPLOYEE_NAME = 'Angela Fastova';
 
-const STATE_KEY = 'wt_af_state';
-const LOG_KEY = 'wt_af_log';
+const STATE_KEY = 'wt_af_state_v2';
+const LOG_KEY = 'wt_af_log_v2';
 const AUTH_KEY = 'wt_af_auth_v1';
 const SUMMARY_REFRESH_MS = 60000;
 
@@ -1009,7 +1009,8 @@ function renderSummary() {
   }
 
   const rate = Number(summary.rate || 0);
-  const todayEarned = todayHours * rate;
+  const billableTodayHours = Math.round(todayHours * 10) / 10;
+  const todayEarned = billableTodayHours * rate;
   const billableWeekHours = Math.round(weekHours * 10) / 10;
   const weekEarned = billableWeekHours * rate;
   const currentBalance =
@@ -1124,7 +1125,7 @@ async function punch(type) {
     if (result.status === 'ok') {
       applySuccessfulPunch(type, now);
       showToast(type === 'in' ? '✓ Приход записан' : '✓ Уход записан', 'success');
-      await syncSummary(false);
+      syncSummary(false);
     } else if (result.status === 'unauthorized') {
       requireLogin();
     } else if (result.status === 'duplicate_skipped') {
