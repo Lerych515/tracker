@@ -1248,17 +1248,15 @@ async function boot() {
     return;
   }
 
-  document.getElementById('authCopy').textContent = 'Проверяем доступ…';
+  isAuthReady = true;
+  hideAuth();
+  updateUI();
+  updateSessionTimer();
 
-  await Promise.all([
+  Promise.all([
     syncFromServer(false),
     syncSummary(false)
-  ]);
-
-  if (isAuthReady) {
-    hideAuth();
-    updateSessionTimer();
-  }
+  ]).catch(() => {});
 }
 
 boot();
